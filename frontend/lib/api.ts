@@ -1,4 +1,4 @@
-import type { Collection, CollectionDetail, MediaType, Movie, SearchResult } from "@/types";
+import type { Collection, CollectionDetail, MediaType, MediaTypeSelection, Movie, SearchResult } from "@/types";
 
 // The localhost fallback only ever applies to local development — Render builds
 // always have NEXT_PUBLIC_API_URL set, and this warns loudly if that's missed.
@@ -79,18 +79,21 @@ export const getMovies = (params?: { watched?: boolean; collectionId?: string | 
   const qs = search.toString();
   return request<Movie[]>(`/movies${qs ? `?${qs}` : ""}`);
 };
+// A `mediaType` of "auto" (or omitted) tells the backend to resolve movie vs
+// TV itself via TMDB — the normal path for both single and bulk adds. Only an
+// explicit "movie"/"tv" forces the type outright.
 export const createMovie = (input: {
   title: string;
-  mediaType?: MediaType;
+  mediaType?: MediaTypeSelection;
   collectionId?: string | null;
   year?: number;
   runtime?: number;
   posterUrl?: string;
 }) => request<Movie>("/movies", { method: "POST", body: JSON.stringify(input) });
-export const bulkAddMovies = (collectionId: string | null, text: string, mediaType?: MediaType) =>
+export const bulkAddMovies = (collectionId: string | null, text: string) =>
   request<{ created: Movie[]; skipped: string[] }>("/movies/bulk", {
     method: "POST",
-    body: JSON.stringify({ collectionId, text, mediaType }),
+    body: JSON.stringify({ collectionId, text }),
   });
 export const updateMovie = (
   id: string,
@@ -106,6 +109,8 @@ export const updateMovie = (
   }>
 ) => request<Movie>(`/movies/${id}`, { method: "PATCH", body: JSON.stringify(input) });
 export const deleteMovie = (id: string) => request<void>(`/movies/${id}`, { method: "DELETE" });
+/** Re-runs TMDB resolution for one item — repairs a wrong/missing poster or a misdetected media type without deleting and recreating it. */
+export const refreshTmdb = (id: string) => request<Movie>(`/movies/${id}/refresh-tmdb`, { method: "POST" });
 export const reorderMovies = (collectionId: string | null, orderedIds: string[]) =>
   request<void>("/movies/reorder", { method: "PATCH", body: JSON.stringify({ collectionId, orderedIds }) });
 

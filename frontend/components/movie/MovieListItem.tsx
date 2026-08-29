@@ -10,6 +10,7 @@ export function MovieListItem({
   onToggle,
   onEdit,
   onDelete,
+  onRefresh,
   pathLabel,
   dragHandleProps,
   isDragging,
@@ -18,11 +19,15 @@ export function MovieListItem({
   onToggle: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onRefresh?: () => void;
   pathLabel?: string;
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
   isDragging?: boolean;
 }) {
-  const runtime = formatRuntime(movie.runtime);
+  // TV runtime isn't tracked (no season/episode tracking), so shows get a
+  // plain "TV Show" label instead of a movie-style runtime figure.
+  const meta = movie.mediaType === "tv" ? "TV Show" : formatRuntime(movie.runtime);
+  const canRefresh = movie.posterStatus === "unavailable" || movie.posterStatus === "skipped";
   const watched = movie.watched;
 
   return (
@@ -72,18 +77,18 @@ export function MovieListItem({
         >
           {movie.title}
         </p>
-        {(movie.year || runtime || pathLabel) && (
+        {(movie.year || meta || pathLabel) && (
           <p className="mt-0.5 truncate text-xs text-[color:var(--text-tertiary)]">
             {pathLabel && <span>{pathLabel}</span>}
-            {pathLabel && (movie.year || runtime) && <span className="mx-1.5">·</span>}
+            {pathLabel && (movie.year || meta) && <span className="mx-1.5">·</span>}
             {movie.year && <span>{movie.year}</span>}
-            {movie.year && runtime && <span className="mx-1.5">·</span>}
-            {runtime && <span>{runtime}</span>}
+            {movie.year && meta && <span className="mx-1.5">·</span>}
+            {meta && <span>{meta}</span>}
           </p>
         )}
       </div>
 
-      {(onEdit || onDelete) && (
+      {(onEdit || onDelete || (onRefresh && canRefresh)) && (
         <>
           {/* Narrow screens: a single overflow menu keeps the row from getting
               crowded once the title wraps to multiple lines. */}
@@ -91,6 +96,7 @@ export function MovieListItem({
             <DropdownMenu
               items={[
                 ...(onEdit ? [{ label: "Edit", onSelect: onEdit }] : []),
+                ...(onRefresh && canRefresh ? [{ label: "Refresh TMDB", onSelect: onRefresh }] : []),
                 ...(onDelete ? [{ label: "Delete", onSelect: onDelete, danger: true }] : []),
               ]}
             />

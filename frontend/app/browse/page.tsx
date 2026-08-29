@@ -12,7 +12,7 @@ import { useToast } from "@/components/ui/ToastProvider";
 import { useCollections } from "@/hooks/useCollections";
 import { useMovies } from "@/hooks/useMovies";
 import { useMovieView } from "@/hooks/useMovieView";
-import { ApiError, updateMovie } from "@/lib/api";
+import { ApiError, refreshTmdb, updateMovie } from "@/lib/api";
 import { getBreadcrumbTrail, getRootAncestor } from "@/lib/collectionTree";
 import type { Movie } from "@/types";
 import { CheckCheck, Clapperboard, ListChecks, WifiOff } from "lucide-react";
@@ -37,7 +37,7 @@ function BrowseContent() {
   } = useMovies({ watched: watchedParam });
   const { movies: allMovies } = useMovies();
   const { collections, isLoading: collectionsLoading, error: collectionsError, mutate: mutateCollections } = useCollections();
-  const { showError } = useToast();
+  const { showError, showSuccess } = useToast();
   const [view, setView] = useMovieView();
 
   const isLoading = moviesLoading || collectionsLoading;
@@ -74,6 +74,16 @@ function BrowseContent() {
     } catch (err) {
       mutateMovies(movies, false);
       showError(err instanceof ApiError ? err.message : "Couldn't update that movie.");
+    }
+  }
+
+  async function handleRefresh(movie: Movie) {
+    try {
+      await refreshTmdb(movie._id);
+      showSuccess("Refreshing from TMDB…");
+      mutateMovies();
+    } catch (err) {
+      showError(err instanceof ApiError ? err.message : "Couldn't refresh from TMDB right now.");
     }
   }
 
@@ -159,6 +169,7 @@ function BrowseContent() {
                         key={movie._id}
                         movie={movie}
                         onToggle={() => handleToggle(movie)}
+                        onRefresh={() => handleRefresh(movie)}
                         pathLabel={pathLabel}
                       />
                     ) : (
@@ -166,6 +177,7 @@ function BrowseContent() {
                         key={movie._id}
                         movie={movie}
                         onToggle={() => handleToggle(movie)}
+                        onRefresh={() => handleRefresh(movie)}
                         pathLabel={pathLabel}
                       />
                     );

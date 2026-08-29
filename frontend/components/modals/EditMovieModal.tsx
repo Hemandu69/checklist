@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/ToastProvider";
-import { ApiError, updateMovie } from "@/lib/api";
-import type { Collection, MediaType, Movie } from "@/types";
+import { ApiError, refreshTmdb, updateMovie } from "@/lib/api";
+import type { Collection, MediaTypeSelection, Movie } from "@/types";
+import { RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export function EditMovieModal({
@@ -25,12 +26,13 @@ export function EditMovieModal({
 }) {
   const { showError, showSuccess } = useToast();
   const [title, setTitle] = useState("");
-  const [mediaType, setMediaType] = useState<MediaType>("movie");
+  const [mediaType, setMediaType] = useState<MediaTypeSelection>("movie");
   const [collectionId, setCollectionId] = useState("");
   const [year, setYear] = useState("");
   const [runtime, setRuntime] = useState("");
   const [posterUrl, setPosterUrl] = useState("");
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (open && movie) {
@@ -51,7 +53,7 @@ export function EditMovieModal({
     try {
       await updateMovie(movie._id, {
         title: title.trim(),
-        mediaType,
+        mediaType: mediaType === "auto" ? "movie" : mediaType,
         collectionId: collectionId || null,
         year: year ? Number(year) : null,
         runtime: runtime ? Number(runtime) : null,
@@ -67,7 +69,23 @@ export function EditMovieModal({
     }
   }
 
+  async function handleRefresh() {
+    if (!movie) return;
+    setRefreshing(true);
+    try {
+      await refreshTmdb(movie._id);
+      showSuccess("Refreshing from TMDB…");
+      onSaved();
+    } catch (err) {
+      showError(err instanceof ApiError ? err.message : "Couldn't refresh from TMDB right now.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   if (!movie) return null;
+
+  const canRefresh = movie.posterStatus === "unavailable" || movie.posterStatus === "skipped";
 
   return (
     <Modal open={open} onClose={onClose} title={mediaType === "tv" ? "Edit TV Show" : "Edit Movie"}>
@@ -132,6 +150,17 @@ export function EditMovieModal({
             value={posterUrl}
             onChange={(e) => setPosterUrl(e.target.value)}
           />
+          {canRefresh && (
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-[color:var(--accent)] transition hover:opacity-80 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+              {refreshing ? "Refreshing…" : "Refresh from TMDB"}
+            </button>
+          )}
         </div>
 
         <div className="mt-1 flex justify-end gap-2">

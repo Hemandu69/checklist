@@ -5,6 +5,7 @@ import {
   bulkAddMovies,
   createMovie,
   deleteMovie,
+  refreshMovieTmdb,
   reorderMovies,
   updateMovie,
   withDefaultMediaType,
@@ -48,6 +49,12 @@ export const updateMovieHandler = asyncHandler(async (req: Request, res: Respons
   const input = { ...req.body };
   if ("collectionId" in input) input.collectionId = parseCollectionIdParam(input.collectionId);
   const movie = await updateMovie(id, input);
+  res.json(movie);
+});
+
+export const refreshTmdbHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const movie = await refreshMovieTmdb(id);
   res.json(movie);
 });
 

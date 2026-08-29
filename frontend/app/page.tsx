@@ -17,7 +17,7 @@ import { useCollections } from "@/hooks/useCollections";
 import { useMovies } from "@/hooks/useMovies";
 import { useMovieView } from "@/hooks/useMovieView";
 import { getChildren } from "@/lib/collectionTree";
-import { ApiError, deleteCollection, deleteMovie, reorderMovies, updateMovie } from "@/lib/api";
+import { ApiError, deleteCollection, deleteMovie, refreshTmdb, reorderMovies, updateMovie } from "@/lib/api";
 import type { Collection, Movie } from "@/types";
 import { FolderPlus, LibraryBig, WifiOff } from "lucide-react";
 import { useState } from "react";
@@ -91,6 +91,16 @@ export default function HomePage() {
       mutateLoose();
     } catch (err) {
       showError(err instanceof ApiError ? err.message : "Couldn't delete this movie.");
+    }
+  }
+
+  async function handleRefreshLoose(movie: Movie) {
+    try {
+      await refreshTmdb(movie._id);
+      showSuccess("Refreshing from TMDB…");
+      mutateLoose();
+    } catch (err) {
+      showError(err instanceof ApiError ? err.message : "Couldn't refresh from TMDB right now.");
     }
   }
 
@@ -182,6 +192,7 @@ export default function HomePage() {
                   }}
                   onEdit={(movie) => setEditingMovie(movie)}
                   onDelete={(movie) => setDeletingMovie(movie)}
+                  onRefresh={handleRefreshLoose}
                   onReorder={handleReorderLoose}
                 />
               </div>

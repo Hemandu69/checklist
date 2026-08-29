@@ -31,9 +31,10 @@ interface ItemProps {
   onToggle: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onRefresh?: () => void;
 }
 
-function SortableCard({ movie, onToggle, onEdit, onDelete }: ItemProps) {
+function SortableCard({ movie, onToggle, onEdit, onDelete, onRefresh }: ItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: movie._id,
   });
@@ -45,6 +46,7 @@ function SortableCard({ movie, onToggle, onEdit, onDelete }: ItemProps) {
         onToggle={onToggle}
         onEdit={onEdit}
         onDelete={onDelete}
+        onRefresh={onRefresh}
         isDragging={isDragging}
         dragHandleProps={{ ...attributes, ...listeners } as React.HTMLAttributes<HTMLDivElement>}
       />
@@ -52,7 +54,7 @@ function SortableCard({ movie, onToggle, onEdit, onDelete }: ItemProps) {
   );
 }
 
-function SortableListRow({ movie, onToggle, onEdit, onDelete }: ItemProps) {
+function SortableListRow({ movie, onToggle, onEdit, onDelete, onRefresh }: ItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: movie._id,
   });
@@ -64,6 +66,7 @@ function SortableListRow({ movie, onToggle, onEdit, onDelete }: ItemProps) {
         onToggle={onToggle}
         onEdit={onEdit}
         onDelete={onDelete}
+        onRefresh={onRefresh}
         isDragging={isDragging}
         dragHandleProps={{ ...attributes, ...listeners } as React.HTMLAttributes<HTMLDivElement>}
       />
@@ -77,6 +80,7 @@ export function SortableMovieList({
   onToggle,
   onEdit,
   onDelete,
+  onRefresh,
   onReorder,
 }: {
   movies: Movie[];
@@ -84,6 +88,7 @@ export function SortableMovieList({
   onToggle: (id: string) => void;
   onEdit?: (movie: Movie) => void;
   onDelete?: (movie: Movie) => void;
+  onRefresh?: (movie: Movie) => void;
   onReorder: (orderedIds: string[]) => void;
 }) {
   const sensors = useSensors(
@@ -114,6 +119,7 @@ export function SortableMovieList({
               onToggle: () => onToggle(movie._id),
               onEdit: onEdit ? () => onEdit(movie) : undefined,
               onDelete: onDelete ? () => onDelete(movie) : undefined,
+              onRefresh: onRefresh ? () => onRefresh(movie) : undefined,
             };
             return view === "grid" ? (
               <SortableCard key={movie._id} {...itemProps} />

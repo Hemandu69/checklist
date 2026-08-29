@@ -16,7 +16,7 @@ import { ViewToggle } from "@/components/movie/ViewToggle";
 import { useCollectionDetail } from "@/hooks/useCollectionDetail";
 import { useCollections } from "@/hooks/useCollections";
 import { useMovieView } from "@/hooks/useMovieView";
-import { ApiError, deleteCollection, deleteMovie, reorderMovies, updateMovie } from "@/lib/api";
+import { ApiError, deleteCollection, deleteMovie, refreshTmdb, reorderMovies, updateMovie } from "@/lib/api";
 import { getBreadcrumbTrail } from "@/lib/collectionTree";
 import { percent } from "@/lib/utils";
 import type { Collection, Movie } from "@/types";
@@ -95,6 +95,16 @@ export default function CollectionDetailPage() {
       refreshAll();
     } catch (err) {
       showError(err instanceof ApiError ? err.message : "Couldn't delete this movie.");
+    }
+  }
+
+  async function handleRefresh(movie: Movie) {
+    try {
+      await refreshTmdb(movie._id);
+      showSuccess("Refreshing from TMDB…");
+      mutate();
+    } catch (err) {
+      showError(err instanceof ApiError ? err.message : "Couldn't refresh from TMDB right now.");
     }
   }
 
@@ -225,6 +235,7 @@ export default function CollectionDetailPage() {
                   }}
                   onEdit={(movie) => setEditingMovie(movie)}
                   onDelete={(movie) => setDeletingMovie(movie)}
+                  onRefresh={handleRefresh}
                   onReorder={handleReorder}
                 />
               </div>

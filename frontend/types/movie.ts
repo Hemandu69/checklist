@@ -1,5 +1,7 @@
 export type PosterStatus = "pending" | "found" | "unavailable" | "skipped";
 export type MediaType = "movie" | "tv";
+/** "auto" means "let TMDB decide" — the default for new items unless the user forces a type. */
+export type MediaTypeSelection = MediaType | "auto";
 
 export interface Movie {
   _id: string;

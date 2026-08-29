@@ -11,6 +11,7 @@ export function MovieCard({
   onToggle,
   onEdit,
   onDelete,
+  onRefresh,
   pathLabel,
   dragHandleProps,
   isDragging,
@@ -19,14 +20,18 @@ export function MovieCard({
   onToggle: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onRefresh?: () => void;
   pathLabel?: string;
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
   isDragging?: boolean;
 }) {
   const [imageFailed, setImageFailed] = useState(false);
-  const runtime = formatRuntime(movie.runtime);
+  // TV runtime isn't tracked (no season/episode tracking), so shows get a
+  // plain "TV Show" label instead of a movie-style runtime figure.
+  const meta = movie.mediaType === "tv" ? "TV Show" : formatRuntime(movie.runtime);
   const hasPoster = Boolean(movie.posterUrl) && !imageFailed;
   const isPending = movie.posterStatus === "pending";
+  const canRefresh = movie.posterStatus === "unavailable" || movie.posterStatus === "skipped";
   const watched = movie.watched;
 
   return (
@@ -70,7 +75,13 @@ export function MovieCard({
           >
             {movie.title}
           </p>
-          {movie.year && <p className="tabular text-xs text-[color:var(--text-tertiary)]">{movie.year}</p>}
+          {(movie.year || meta) && (
+            <p className="tabular text-xs text-[color:var(--text-tertiary)]">
+              {movie.year}
+              {movie.year && meta && " · "}
+              {meta}
+            </p>
+          )}
         </div>
       )}
 
@@ -90,11 +101,11 @@ export function MovieCard({
             >
               {movie.title}
             </p>
-            {(movie.year || runtime) && (
+            {(movie.year || meta) && (
               <p className="tabular mt-0.5 truncate text-[11px] text-white/55">
                 {movie.year}
-                {movie.year && runtime && " · "}
-                {runtime}
+                {movie.year && meta && " · "}
+                {meta}
               </p>
             )}
           </div>
@@ -107,12 +118,13 @@ export function MovieCard({
         </div>
       )}
 
-      {(onEdit || onDelete) && (
+      {(onEdit || onDelete || (onRefresh && canRefresh)) && (
         <div className="absolute right-2 top-2 z-10" onPointerDown={(e) => e.stopPropagation()}>
           <DropdownMenu
             variant="overlay"
             items={[
               ...(onEdit ? [{ label: "Edit", onSelect: onEdit }] : []),
+              ...(onRefresh && canRefresh ? [{ label: "Refresh TMDB", onSelect: onRefresh }] : []),
               ...(onDelete ? [{ label: "Delete", onSelect: onDelete, danger: true }] : []),
             ]}
           />

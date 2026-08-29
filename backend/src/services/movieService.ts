@@ -2,7 +2,7 @@ import { Types } from "mongoose";
 import { Movie, IMovie, MediaType, PosterStatus } from "../models/Movie";
 import { AppError } from "../utils/AppError";
 import { parseBulkTitles } from "../utils/parseBulkTitles";
-import { findPoster, isPosterProviderConfigured } from "./posterService";
+import { findPoster, isPosterProviderConfigured, MediaTypeOrAuto } from "./posterService";
 import { mapWithConcurrency } from "../utils/mapWithConcurrency";
 import { getCollectionOrThrow } from "./collectionService";
 
@@ -15,8 +15,19 @@ function normalizeTitle(title: string): string {
   return title.trim().toLowerCase();
 }
 
+/** Coerces an arbitrary value to a concrete MediaType, defaulting to "movie" — used where a type must already be settled (edits, legacy reads). */
 function normalizeMediaType(value: unknown): MediaType {
   return value === "tv" ? "tv" : "movie";
+}
+
+/**
+ * Parses a mediaType the caller may or may not have supplied. Returns the
+ * concrete type only when the caller explicitly forced one; null covers
+ * "not supplied" and "auto" alike, both of which mean "let TMDB decide" —
+ * the normal path for bulk imports and the default for single adds.
+ */
+function parseExplicitMediaType(value: unknown): MediaType | null {
+  return value === "movie" || value === "tv" ? value : null;
 }
 
 /**
@@ -38,17 +49,23 @@ async function assertCollectionExists(collectionId: string | null): Promise<void
  * poster provider must never delay or fail movie creation. findPoster()
  * itself never throws, but this is still guarded so a lookup can never leave
  * a movie stuck in "pending" forever.
+ *
+ * When mediaType is "auto" (the normal case for bulk imports and single adds
+ * that didn't force a type), the resolved mediaType TMDB settled on is written
+ * back onto the document alongside the poster — this is what lets "Daredevil
+ * S1" land as a TV show without the user ever picking one.
  */
 async function attachPoster(
   movieId: Types.ObjectId,
   title: string,
   knownYear?: number,
   knownRuntime?: number,
-  mediaType: MediaType = "movie"
+  mediaType: MediaTypeOrAuto = "movie"
 ): Promise<void> {
   try {
     const result = await findPoster(title, knownYear, mediaType);
     await Movie.findByIdAndUpdate(movieId, {
+      mediaType: result.mediaType,
       posterUrl: result.posterUrl,
       posterSource: result.posterSource,
       posterStatus: result.posterUrl ? "found" : "unavailable",
@@ -73,7 +90,7 @@ export async function retryStalePosterLookups(): Promise<void> {
   if (!isPosterProviderConfigured()) return;
 
   const stale = await Movie.find({ posterStatus: "skipped" })
-    .select("_id title year runtime mediaType")
+    .select("_id title year runtime")
     .limit(STALE_POSTER_BACKFILL_LIMIT)
     .lean();
 
@@ -86,8 +103,13 @@ export async function retryStalePosterLookups(): Promise<void> {
     { posterStatus: "pending" }
   );
 
+  // "auto" rather than trusting the stored mediaType — these records were
+  // never actually checked against TMDB (no key was configured yet), so any
+  // mediaType they carry is just the old create-time default, not a real
+  // resolution. This is the same backfill path that can also fix a movie/tv
+  // misclassification, not just a missing poster.
   await mapWithConcurrency(stale, POSTER_FETCH_CONCURRENCY, (movie) =>
-    attachPoster(movie._id, movie.title, movie.year, movie.runtime, normalizeMediaType(movie.mediaType))
+    attachPoster(movie._id, movie.title, movie.year, movie.runtime, "auto")
   );
 }
 
@@ -104,7 +126,11 @@ export async function createMovie(input: CreateMovieInput): Promise<IMovie> {
   const title = input.title?.trim();
   if (!title) throw new AppError("Movie title is required", 400);
 
-  const mediaType = normalizeMediaType(input.mediaType);
+  // Explicitly forced ("movie"/"tv") wins outright. Omitted or "auto" means
+  // TMDB decides in the background — the record is created with a "movie"
+  // placeholder immediately (posterStatus "pending" hides the mislabel from
+  // the UI in the interim) and attachPoster corrects it once resolved.
+  const explicitMediaType = parseExplicitMediaType(input.mediaType);
   const collectionId = input.collectionId || null;
   await assertCollectionExists(collectionId);
 
@@ -124,7 +150,7 @@ export async function createMovie(input: CreateMovieInput): Promise<IMovie> {
 
   const movie = await Movie.create({
     title,
-    mediaType,
+    mediaType: explicitMediaType ?? "movie",
     collectionId,
     order: count,
     year: input.year,
@@ -133,7 +159,9 @@ export async function createMovie(input: CreateMovieInput): Promise<IMovie> {
     posterStatus: input.posterUrl ? "found" : shouldFetchPoster ? "pending" : "skipped",
   });
 
-  if (shouldFetchPoster) void attachPoster(movie._id, title, input.year, input.runtime, mediaType);
+  if (shouldFetchPoster) {
+    void attachPoster(movie._id, title, input.year, input.runtime, explicitMediaType ?? "auto");
+  }
 
   return movie;
 }
@@ -149,7 +177,11 @@ export async function bulkAddMovies(
   mediaTypeInput?: string
 ): Promise<BulkAddResult> {
   await assertCollectionExists(collectionId);
-  const mediaType = normalizeMediaType(mediaTypeInput);
+  // Normally omitted — each title in the pasted batch is independently
+  // auto-resolved (a movie next to a "S1" TV show in the same paste is the
+  // whole point). An explicit override here forces the entire batch to one
+  // type, kept only for API flexibility, not exposed by the bulk-paste UI.
+  const explicitMediaType = parseExplicitMediaType(mediaTypeInput);
 
   const titles = parseBulkTitles(rawText ?? "");
   if (titles.length === 0) {
@@ -178,7 +210,7 @@ export async function bulkAddMovies(
   let count = await Movie.countDocuments({ collectionId });
   const docs = toCreate.map((title) => ({
     title,
-    mediaType,
+    mediaType: explicitMediaType ?? "movie",
     collectionId: collectionId ? new Types.ObjectId(collectionId) : null,
     order: count++,
     posterStatus,
@@ -188,7 +220,7 @@ export async function bulkAddMovies(
 
   if (shouldFetchPosters && created.length > 0) {
     void mapWithConcurrency(created, POSTER_FETCH_CONCURRENCY, (movie) =>
-      attachPoster(movie._id, movie.title, undefined, undefined, mediaType)
+      attachPoster(movie._id, movie.title, undefined, undefined, explicitMediaType ?? "auto")
     );
   }
 
@@ -216,7 +248,17 @@ export async function updateMovie(id: string, input: UpdateMovieInput): Promise<
     movie.title = title;
   }
 
-  if (input.mediaType !== undefined) movie.mediaType = normalizeMediaType(input.mediaType);
+  // Changing the type on purpose means the current poster/metadata (fetched
+  // for the old type) is very likely wrong for the new one — e.g. a TV show
+  // re-typed as a movie would otherwise keep its series poster. Re-resolving
+  // against the new explicit type replaces it in the background, the same
+  // way a fresh create's poster fetch works.
+  let mediaTypeChanged = false;
+  if (input.mediaType !== undefined) {
+    const nextMediaType = normalizeMediaType(input.mediaType);
+    mediaTypeChanged = nextMediaType !== movie.mediaType;
+    movie.mediaType = nextMediaType;
+  }
 
   if (input.collectionId !== undefined) {
     const nextCollectionId = input.collectionId || null;
@@ -239,7 +281,41 @@ export async function updateMovie(id: string, input: UpdateMovieInput): Promise<
   }
   if (input.order !== undefined) movie.order = input.order;
 
+  // Only auto-refresh when the caller didn't also hand us an explicit poster
+  // in the same edit — that's a deliberate override and should win outright.
+  const shouldRefreshPoster = mediaTypeChanged && input.posterUrl === undefined && isPosterProviderConfigured();
+  if (shouldRefreshPoster) movie.posterStatus = "pending";
+
   await movie.save();
+
+  if (shouldRefreshPoster) {
+    void attachPoster(movie._id, movie.title, undefined, undefined, movie.mediaType);
+  }
+
+  return movie;
+}
+
+/**
+ * Manually re-runs TMDB resolution for one existing item — the "Refresh TMDB"
+ * action for records that predate automatic detection and were incorrectly
+ * typed (e.g. a TV show stuck as "movie" with no poster). Always resolves in
+ * "auto" mode, so it can fix the mediaType as well as the poster, not just
+ * retry the same (possibly wrong) type. Runs in the background exactly like
+ * a fresh create's poster fetch — this never blocks on TMDB.
+ */
+export async function refreshMovieTmdb(id: string): Promise<IMovie> {
+  const movie = await Movie.findById(id);
+  if (!movie) throw new AppError("Movie not found", 404);
+  if (!isPosterProviderConfigured()) throw new AppError("TMDB is not configured", 400);
+
+  movie.posterStatus = "pending";
+  await movie.save();
+
+  // No knownYear/knownRuntime hint: unlike the routine backfill, this is a
+  // deliberate repair, and locking in whatever year the previous (likely
+  // wrong) resolution left behind would block this from correcting it.
+  void attachPoster(movie._id, movie.title, undefined, undefined, "auto");
+
   return movie;
 }
 
