@@ -7,6 +7,7 @@ import { AddMovieModal } from "@/components/modals/AddMovieModal";
 import { CollectionModal } from "@/components/modals/CollectionModal";
 import { EditMovieModal } from "@/components/modals/EditMovieModal";
 import { SortableMovieList } from "@/components/movie/SortableMovieList";
+import { ViewToggle } from "@/components/movie/ViewToggle";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -14,6 +15,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/ToastProvider";
 import { useCollections } from "@/hooks/useCollections";
 import { useMovies } from "@/hooks/useMovies";
+import { useMovieView } from "@/hooks/useMovieView";
 import { getChildren } from "@/lib/collectionTree";
 import { ApiError, deleteCollection, deleteMovie, reorderMovies, updateMovie } from "@/lib/api";
 import type { Collection, Movie } from "@/types";
@@ -26,6 +28,7 @@ export default function HomePage() {
     collectionId: null,
   });
   const { showError, showSuccess } = useToast();
+  const [view, setView] = useMovieView();
 
   const isLoading = collectionsLoading || looseLoading;
 
@@ -95,10 +98,13 @@ export default function HomePage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <SectionTabs />
-        <Button variant="glass" size="sm" onClick={() => setCollectionModalOpen(true)}>
-          <FolderPlus className="h-3.5 w-3.5" />
-          New collection
-        </Button>
+        <div className="flex items-center gap-2">
+          <ViewToggle view={view} onChange={setView} />
+          <Button variant="glass" size="sm" onClick={() => setCollectionModalOpen(true)}>
+            <FolderPlus className="h-3.5 w-3.5" />
+            New collection
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -148,6 +154,7 @@ export default function HomePage() {
               <div className="glass rounded-3xl p-2 sm:p-3">
                 <SortableMovieList
                   movies={looseMovies}
+                  view={view}
                   onToggle={(movieId) => {
                     const movie = looseMovies.find((m) => m._id === movieId);
                     if (movie) handleToggleLoose(movie);

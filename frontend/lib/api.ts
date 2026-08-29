@@ -1,6 +1,14 @@
 import type { Collection, CollectionDetail, Movie, SearchResult } from "@/types";
 
+// The localhost fallback only ever applies to local development — Render builds
+// always have NEXT_PUBLIC_API_URL set, and this warns loudly if that's missed.
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+
+if (!process.env.NEXT_PUBLIC_API_URL && process.env.NODE_ENV === "production") {
+  console.error(
+    "[config] NEXT_PUBLIC_API_URL is not set. Falling back to http://localhost:4000/api, which will not work in production."
+  );
+}
 
 export class ApiError extends Error {
   status: number;

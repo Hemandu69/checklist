@@ -2,12 +2,15 @@
 
 import { SectionTabs } from "@/components/layout/SectionTabs";
 import { MovieCard } from "@/components/movie/MovieCard";
+import { MovieListItem } from "@/components/movie/MovieListItem";
 import { MOVIE_GRID_CLASSES } from "@/components/movie/SortableMovieList";
+import { ViewToggle } from "@/components/movie/ViewToggle";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/ToastProvider";
 import { useCollections } from "@/hooks/useCollections";
 import { useMovies } from "@/hooks/useMovies";
+import { useMovieView } from "@/hooks/useMovieView";
 import { ApiError, updateMovie } from "@/lib/api";
 import { getBreadcrumbTrail, getRootAncestor } from "@/lib/collectionTree";
 import type { Movie } from "@/types";
@@ -29,6 +32,7 @@ function BrowseContent() {
   const { movies: allMovies } = useMovies();
   const { collections, isLoading: collectionsLoading } = useCollections();
   const { showError } = useToast();
+  const [view, setView] = useMovieView();
 
   const isLoading = moviesLoading || collectionsLoading;
   const libraryIsEmpty = allMovies.length === 0;
@@ -81,7 +85,10 @@ function BrowseContent() {
         {!isLoading && <p className="tabular text-sm text-[color:var(--text-secondary)]">{movies.length} movie{movies.length === 1 ? "" : "s"}</p>}
       </div>
 
-      <SectionTabs />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SectionTabs />
+        <ViewToggle view={view} onChange={setView} />
+      </div>
 
       {isLoading ? (
         <div className="flex flex-col gap-3">
@@ -118,16 +125,24 @@ function BrowseContent() {
                 </div>
               )}
               <div className="glass rounded-3xl p-3">
-                <div className={MOVIE_GRID_CLASSES}>
+                <div className={view === "grid" ? MOVIE_GRID_CLASSES : "flex flex-col gap-0.5"}>
                   {groupMovies.map((movie) => {
                     const trail = getBreadcrumbTrail(collections, movie.collectionId);
                     const subPath = trail.slice(1, -1).map((c) => c.name);
-                    return (
+                    const pathLabel = subPath.length > 0 ? subPath.join(" / ") : undefined;
+                    return view === "grid" ? (
                       <MovieCard
                         key={movie._id}
                         movie={movie}
                         onToggle={() => handleToggle(movie)}
-                        pathLabel={subPath.length > 0 ? subPath.join(" / ") : undefined}
+                        pathLabel={pathLabel}
+                      />
+                    ) : (
+                      <MovieListItem
+                        key={movie._id}
+                        movie={movie}
+                        onToggle={() => handleToggle(movie)}
+                        pathLabel={pathLabel}
                       />
                     );
                   })}

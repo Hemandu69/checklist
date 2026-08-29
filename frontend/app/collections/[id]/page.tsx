@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/ToastProvider";
 import { useCollectionDetail } from "@/hooks/useCollectionDetail";
 import { useCollections } from "@/hooks/useCollections";
+import { useMovieView } from "@/hooks/useMovieView";
 import { ApiError, deleteCollection, deleteMovie, reorderMovies, updateMovie } from "@/lib/api";
 import { getBreadcrumbTrail } from "@/lib/collectionTree";
 import { percent } from "@/lib/utils";
@@ -27,6 +28,7 @@ export default function CollectionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { detail, isLoading, mutate } = useCollectionDetail(id);
   const { collections } = useCollections();
+  const [view] = useMovieView();
   const { showError, showSuccess } = useToast();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -199,6 +201,7 @@ export default function CollectionDetailPage() {
               <div className="glass rounded-3xl p-2 sm:p-3">
                 <SortableMovieList
                   movies={movies}
+                  view={view}
                   onToggle={(movieId) => {
                     const movie = movies.find((m) => m._id === movieId);
                     if (movie) handleToggle(movie);

@@ -13,6 +13,16 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     return;
   }
 
+  if (err && typeof err === "object" && "type" in err && (err as { type: unknown }).type === "entity.too.large") {
+    res.status(413).json({ error: "Request body is too large" });
+    return;
+  }
+
+  if (err instanceof SyntaxError && "body" in err) {
+    res.status(400).json({ error: "Invalid JSON in request body" });
+    return;
+  }
+
   if (err instanceof mongoose.Error.ValidationError) {
     res.status(400).json({ error: "Validation failed", details: err.message });
     return;

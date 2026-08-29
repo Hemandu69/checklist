@@ -15,25 +15,25 @@ import {
   rectSortingStrategy,
   sortableKeyboardCoordinates,
   useSortable,
+  verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import type { MovieView } from "@/hooks/useMovieView";
 import type { Movie } from "@/types";
 import { MovieCard } from "./MovieCard";
+import { MovieListItem } from "./MovieListItem";
 
 export const MOVIE_GRID_CLASSES =
   "grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5";
 
-function SortableCard({
-  movie,
-  onToggle,
-  onEdit,
-  onDelete,
-}: {
+interface ItemProps {
   movie: Movie;
   onToggle: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
-}) {
+}
+
+function SortableCard({ movie, onToggle, onEdit, onDelete }: ItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: movie._id,
   });
@@ -52,14 +52,35 @@ function SortableCard({
   );
 }
 
+function SortableListRow({ movie, onToggle, onEdit, onDelete }: ItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: movie._id,
+  });
+
+  return (
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }}>
+      <MovieListItem
+        movie={movie}
+        onToggle={onToggle}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        isDragging={isDragging}
+        dragHandleProps={{ ...attributes, ...listeners } as React.HTMLAttributes<HTMLDivElement>}
+      />
+    </div>
+  );
+}
+
 export function SortableMovieList({
   movies,
+  view = "grid",
   onToggle,
   onEdit,
   onDelete,
   onReorder,
 }: {
   movies: Movie[];
+  view?: MovieView;
   onToggle: (id: string) => void;
   onEdit?: (movie: Movie) => void;
   onDelete?: (movie: Movie) => void;
@@ -82,17 +103,24 @@ export function SortableMovieList({
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <SortableContext items={movies.map((m) => m._id)} strategy={rectSortingStrategy}>
-        <div className={MOVIE_GRID_CLASSES}>
-          {movies.map((movie) => (
-            <SortableCard
-              key={movie._id}
-              movie={movie}
-              onToggle={() => onToggle(movie._id)}
-              onEdit={onEdit ? () => onEdit(movie) : undefined}
-              onDelete={onDelete ? () => onDelete(movie) : undefined}
-            />
-          ))}
+      <SortableContext
+        items={movies.map((m) => m._id)}
+        strategy={view === "grid" ? rectSortingStrategy : verticalListSortingStrategy}
+      >
+        <div className={view === "grid" ? MOVIE_GRID_CLASSES : "flex flex-col gap-0.5"}>
+          {movies.map((movie) => {
+            const itemProps: ItemProps = {
+              movie,
+              onToggle: () => onToggle(movie._id),
+              onEdit: onEdit ? () => onEdit(movie) : undefined,
+              onDelete: onDelete ? () => onDelete(movie) : undefined,
+            };
+            return view === "grid" ? (
+              <SortableCard key={movie._id} {...itemProps} />
+            ) : (
+              <SortableListRow key={movie._id} {...itemProps} />
+            );
+          })}
         </div>
       </SortableContext>
     </DndContext>
