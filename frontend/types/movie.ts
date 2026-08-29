@@ -11,6 +11,8 @@ export interface Movie {
   posterUrl?: string | null;
   posterSource?: string | null;
   posterStatus: PosterStatus;
+  tmdbId?: number | null;
+  overview?: string | null;
   createdAt: string;
   updatedAt: string;
 }

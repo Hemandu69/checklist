@@ -7,6 +7,9 @@ import { mapWithConcurrency } from "../utils/mapWithConcurrency";
 import { getCollectionOrThrow } from "./collectionService";
 
 const POSTER_FETCH_CONCURRENCY = 4;
+// Caps the one-time startup backfill below so a large backlog of previously
+// "skipped" movies can't burst hundreds of requests at TMDB at once.
+const STALE_POSTER_BACKFILL_LIMIT = 50;
 
 function normalizeTitle(title: string): string {
   return title.trim().toLowerCase();
@@ -17,22 +20,61 @@ async function assertCollectionExists(collectionId: string | null): Promise<void
 }
 
 /**
- * Looks up a poster in the background and writes it onto the movie once found.
- * Never awaited by callers — a slow or unavailable poster provider must never
- * delay or fail movie creation.
+ * Looks up a poster (and light metadata) in the background and writes it onto
+ * the movie once found. Never awaited by callers — a slow or unavailable
+ * poster provider must never delay or fail movie creation. findPoster()
+ * itself never throws, but this is still guarded so a lookup can never leave
+ * a movie stuck in "pending" forever.
  */
-async function attachPoster(movieId: Types.ObjectId, title: string, knownYear?: number): Promise<void> {
+async function attachPoster(
+  movieId: Types.ObjectId,
+  title: string,
+  knownYear?: number,
+  knownRuntime?: number
+): Promise<void> {
   try {
     const result = await findPoster(title, knownYear);
     await Movie.findByIdAndUpdate(movieId, {
       posterUrl: result.posterUrl,
       posterSource: result.posterSource,
       posterStatus: result.posterUrl ? "found" : "unavailable",
+      tmdbId: result.tmdbId,
+      overview: result.overview,
       ...(result.year && !knownYear ? { year: result.year } : {}),
+      ...(result.runtime && !knownRuntime ? { runtime: result.runtime } : {}),
     });
-  } catch {
+  } catch (err) {
+    console.error(`[poster] Failed to attach poster for "${title}": ${err instanceof Error ? err.message : "unknown error"}`);
     await Movie.findByIdAndUpdate(movieId, { posterStatus: "unavailable" }).catch(() => {});
   }
+}
+
+/**
+ * One-time startup backfill for movies that were created while TMDB_API_KEY
+ * was unset (posterStatus "skipped"). Runs once, capped, and only does
+ * anything when a provider is now configured — movies already "found" or
+ * "unavailable" are left alone, so this never re-fetches on every restart.
+ */
+export async function retryStalePosterLookups(): Promise<void> {
+  if (!isPosterProviderConfigured()) return;
+
+  const stale = await Movie.find({ posterStatus: "skipped" })
+    .select("_id title year runtime")
+    .limit(STALE_POSTER_BACKFILL_LIMIT)
+    .lean();
+
+  if (stale.length === 0) return;
+
+  console.log(`[poster] backfilling ${stale.length} movie(s) skipped before TMDB was configured`);
+
+  await Movie.updateMany(
+    { _id: { $in: stale.map((m) => m._id) } },
+    { posterStatus: "pending" }
+  );
+
+  await mapWithConcurrency(stale, POSTER_FETCH_CONCURRENCY, (movie) =>
+    attachPoster(movie._id, movie.title, movie.year, movie.runtime)
+  );
 }
 
 export interface CreateMovieInput {
@@ -74,7 +116,7 @@ export async function createMovie(input: CreateMovieInput): Promise<IMovie> {
     posterStatus: input.posterUrl ? "found" : shouldFetchPoster ? "pending" : "skipped",
   });
 
-  if (shouldFetchPoster) void attachPoster(movie._id, title, input.year);
+  if (shouldFetchPoster) void attachPoster(movie._id, title, input.year, input.runtime);
 
   return movie;
 }

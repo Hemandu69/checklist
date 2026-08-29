@@ -13,6 +13,8 @@ export interface IMovie {
   posterUrl?: string | null;
   posterSource?: string | null;
   posterStatus: PosterStatus;
+  tmdbId?: number | null;
+  overview?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,6 +34,8 @@ const movieSchema = new Schema<IMovie>(
       enum: ["pending", "found", "unavailable", "skipped"],
       default: "skipped",
     },
+    tmdbId: { type: Number, default: null },
+    overview: { type: String, trim: true, maxlength: 2000, default: null },
   },
   { timestamps: true }
 );

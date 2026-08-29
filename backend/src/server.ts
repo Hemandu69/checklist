@@ -2,6 +2,7 @@ import "dotenv/config";
 import mongoose from "mongoose";
 import { createApp } from "./app";
 import { connectDB } from "./config/db";
+import { retryStalePosterLookups } from "./services/movieService";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -19,6 +20,11 @@ async function main() {
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`[server] listening on port ${PORT}`);
   });
+
+  // Fire-and-forget: never delays startup or readiness.
+  retryStalePosterLookups().catch((err) =>
+    console.error("[poster] startup backfill failed:", err instanceof Error ? err.message : err)
+  );
 
   let shuttingDown = false;
   async function shutdown(signal: string) {
