@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/ToastProvider";
+import { ViewToggle } from "@/components/movie/ViewToggle";
 import { useCollectionDetail } from "@/hooks/useCollectionDetail";
 import { useCollections } from "@/hooks/useCollections";
 import { useMovieView } from "@/hooks/useMovieView";
@@ -19,16 +20,16 @@ import { ApiError, deleteCollection, deleteMovie, reorderMovies, updateMovie } f
 import { getBreadcrumbTrail } from "@/lib/collectionTree";
 import { percent } from "@/lib/utils";
 import type { Collection, Movie } from "@/types";
-import { Film, FolderPlus, Plus } from "lucide-react";
+import { Film, FolderPlus, Plus, WifiOff } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { mutate as globalMutate } from "swr";
 
 export default function CollectionDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { detail, isLoading, mutate } = useCollectionDetail(id);
+  const { detail, isLoading, error, mutate } = useCollectionDetail(id);
   const { collections } = useCollections();
-  const [view] = useMovieView();
+  const [view, setView] = useMovieView();
   const { showError, showSuccess } = useToast();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -108,6 +109,21 @@ export default function CollectionDetailPage() {
     }
   }
 
+  if (error) {
+    return (
+      <EmptyState
+        icon={WifiOff}
+        title="Couldn't connect to the library."
+        description="The server might be waking up or unreachable. Try again in a moment."
+        action={
+          <Button variant="glass" onClick={() => mutate()}>
+            Try again
+          </Button>
+        }
+      />
+    );
+  }
+
   if (isLoading || !detail) {
     return (
       <div className="flex flex-col gap-6">
@@ -139,7 +155,8 @@ export default function CollectionDetailPage() {
             </p>
           </div>
 
-          <div className="flex w-full gap-2 sm:w-auto">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <ViewToggle view={view} onChange={setView} />
             <Button variant="glass" size="sm" onClick={() => setRenamingSelf(true)}>
               Rename
             </Button>

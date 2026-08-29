@@ -10,7 +10,11 @@ const DEFAULT_DEV_ORIGIN = "http://localhost:3000";
 export function createApp(): Express {
   const app = express();
 
-  const allowedOrigin = process.env.FRONTEND_URL || DEFAULT_DEV_ORIGIN;
+  // Browsers send the Origin header with no trailing slash, and the `cors`
+  // package does an exact string match — a stray trailing slash on this env
+  // var (an easy typo on Render's dashboard) silently breaks CORS for every
+  // request, so it's stripped here rather than trusted as-is.
+  const allowedOrigin = (process.env.FRONTEND_URL || DEFAULT_DEV_ORIGIN).replace(/\/+$/, "");
 
   app.use(helmet());
   app.use(cors({ origin: allowedOrigin }));

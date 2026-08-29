@@ -1,3 +1,5 @@
+import type { MediaType } from "../models/Movie";
+
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const TMDB_API_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342";
@@ -34,7 +36,21 @@ export function isPosterProviderConfigured(): boolean {
   return Boolean(TMDB_API_KEY);
 }
 
-interface TmdbSearchResult {
+// TMDB's movie and TV search/details endpoints use different field names for
+// the same concepts (title vs name, release_date vs first_air_date, a single
+// runtime vs an episode_run_time array). Raw results are normalized into this
+// common shape right after fetching, so the matching/scoring logic below
+// never needs to know which media type it's looking at.
+interface NormalizedSearchResult {
+  id: number;
+  title: string;
+  originalTitle: string;
+  poster_path: string | null;
+  releaseDate?: string;
+  popularity?: number;
+}
+
+interface TmdbMovieSearchResult {
   id: number;
   title: string;
   original_title?: string;
@@ -43,12 +59,22 @@ interface TmdbSearchResult {
   popularity?: number;
 }
 
-interface TmdbSearchResponse {
-  results?: TmdbSearchResult[];
+interface TmdbTvSearchResult {
+  id: number;
+  name: string;
+  original_name?: string;
+  poster_path: string | null;
+  first_air_date?: string;
+  popularity?: number;
 }
 
-interface TmdbMovieDetails {
+interface TmdbSearchResponse<T> {
+  results?: T[];
+}
+
+interface TmdbDetails {
   runtime?: number | null;
+  episode_run_time?: number[] | null;
   overview?: string | null;
 }
 
@@ -141,18 +167,18 @@ function titleSimilarity(query: string, candidate: string): number {
  * confidence bar, which the caller treats as "no suitable match".
  */
 function selectBestMatch(
-  results: TmdbSearchResult[],
+  results: NormalizedSearchResult[],
   title: string,
   year?: number
-): TmdbSearchResult | null {
+): NormalizedSearchResult | null {
   if (results.length === 0) return null;
 
   const query = normalizeForMatch(title);
-  let best: { result: TmdbSearchResult; score: number } | null = null;
+  let best: { result: NormalizedSearchResult; score: number } | null = null;
 
   for (const result of results) {
     const candidateTitle = normalizeForMatch(result.title || "");
-    const candidateOriginal = normalizeForMatch(result.original_title || "");
+    const candidateOriginal = normalizeForMatch(result.originalTitle || "");
     const titleScore = Math.max(
       titleSimilarity(query, candidateTitle),
       titleSimilarity(query, candidateOriginal)
@@ -160,7 +186,7 @@ function selectBestMatch(
 
     let score = titleScore;
 
-    const releaseYear = result.release_date ? Number(result.release_date.slice(0, 4)) : null;
+    const releaseYear = result.releaseDate ? Number(result.releaseDate.slice(0, 4)) : null;
     if (year && releaseYear) {
       if (releaseYear === year) score += 50;
       else if (Math.abs(releaseYear - year) <= 1) score += 15;
@@ -175,48 +201,83 @@ function selectBestMatch(
   return best.result;
 }
 
-/**
- * Looks up a movie's poster and light metadata via TMDB. Isolated behind this
- * module so the provider can be swapped later without touching movie creation
- * logic. Never throws — any failure resolves to nulls so a poster lookup can
- * never block or fail a movie's creation.
- */
-export async function findPoster(title: string, year?: number): Promise<PosterLookupResult> {
-  if (!TMDB_API_KEY || !title.trim()) return EMPTY_RESULT;
-
+/** Runs a title search against the movie or TV endpoint and normalizes the results to a common shape. */
+async function tmdbSearch(mediaType: MediaType, title: string, year?: number): Promise<NormalizedSearchResult[]> {
   const searchParams: Record<string, string> = { query: title, include_adult: "false" };
-  if (year) searchParams.year = String(year);
 
-  const data = await tmdbFetch<TmdbSearchResponse>("/search/movie", searchParams);
-  if (!data) {
-    console.error(`[poster] TMDB lookup failed for "${title}"`);
-    return EMPTY_RESULT;
+  if (mediaType === "tv") {
+    if (year) searchParams.first_air_date_year = String(year);
+    const data = await tmdbFetch<TmdbSearchResponse<TmdbTvSearchResult>>("/search/tv", searchParams);
+    const results = data?.results ?? [];
+    return results.map((r) => ({
+      id: r.id,
+      title: r.name || "",
+      originalTitle: r.original_name || "",
+      poster_path: r.poster_path,
+      releaseDate: r.first_air_date,
+      popularity: r.popularity,
+    }));
   }
 
-  const results = Array.isArray(data.results) ? data.results : [];
+  if (year) searchParams.year = String(year);
+  const data = await tmdbFetch<TmdbSearchResponse<TmdbMovieSearchResult>>("/search/movie", searchParams);
+  const results = data?.results ?? [];
+  return results.map((r) => ({
+    id: r.id,
+    title: r.title || "",
+    originalTitle: r.original_title || "",
+    poster_path: r.poster_path,
+    releaseDate: r.release_date,
+    popularity: r.popularity,
+  }));
+}
+
+/**
+ * Looks up a movie or TV show's poster and light metadata via TMDB. Isolated
+ * behind this module so the provider can be swapped later without touching
+ * movie creation logic. Never throws — any failure resolves to nulls so a
+ * poster lookup can never block or fail an item's creation.
+ */
+export async function findPoster(
+  title: string,
+  year?: number,
+  mediaType: MediaType = "movie"
+): Promise<PosterLookupResult> {
+  if (!TMDB_API_KEY || !title.trim()) return EMPTY_RESULT;
+
+  const results = await tmdbSearch(mediaType, title, year);
   if (results.length === 0) {
-    console.error(`[poster] TMDB lookup found no results for "${title}"`);
+    console.error(`[poster] TMDB lookup found no results for "${title}" (${mediaType})`);
     return EMPTY_RESULT;
   }
 
   const match = selectBestMatch(results, title, year);
   if (!match) {
-    console.error(`[poster] TMDB lookup found no confident match for "${title}"`);
+    console.error(`[poster] TMDB lookup found no confident match for "${title}" (${mediaType})`);
     return EMPTY_RESULT;
   }
 
-  const matchYear = match.release_date ? Number(match.release_date.slice(0, 4)) : null;
+  const matchYear = match.releaseDate ? Number(match.releaseDate.slice(0, 4)) : null;
 
   // Runtime/overview require a second call; a confident title+poster match is
   // still worth keeping even if this one fails or times out.
-  const details = await tmdbFetch<TmdbMovieDetails>(`/movie/${match.id}`, {});
+  const detailsPath = mediaType === "tv" ? `/tv/${match.id}` : `/movie/${match.id}`;
+  const details = await tmdbFetch<TmdbDetails>(detailsPath, {});
+  const runtime =
+    mediaType === "tv"
+      ? Array.isArray(details?.episode_run_time) && details.episode_run_time.length > 0
+        ? details.episode_run_time[0]
+        : null
+      : typeof details?.runtime === "number"
+        ? details.runtime
+        : null;
 
   return {
     posterUrl: match.poster_path ? `${TMDB_IMAGE_BASE}${match.poster_path}` : null,
     posterSource: match.poster_path ? "tmdb" : null,
     year: Number.isFinite(matchYear) ? matchYear : null,
     tmdbId: match.id,
-    runtime: typeof details?.runtime === "number" ? details.runtime : null,
+    runtime,
     overview: details?.overview || null,
   };
 }

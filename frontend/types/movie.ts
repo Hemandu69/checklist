@@ -1,8 +1,10 @@
 export type PosterStatus = "pending" | "found" | "unavailable" | "skipped";
+export type MediaType = "movie" | "tv";
 
 export interface Movie {
   _id: string;
   title: string;
+  mediaType: MediaType;
   collectionId: string | null;
   watched: boolean;
   order: number;

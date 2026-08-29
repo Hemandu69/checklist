@@ -1,5 +1,5 @@
 import { Types } from "mongoose";
-import { Movie, IMovie, PosterStatus } from "../models/Movie";
+import { Movie, IMovie, MediaType, PosterStatus } from "../models/Movie";
 import { AppError } from "../utils/AppError";
 import { parseBulkTitles } from "../utils/parseBulkTitles";
 import { findPoster, isPosterProviderConfigured } from "./posterService";
@@ -13,6 +13,19 @@ const STALE_POSTER_BACKFILL_LIMIT = 50;
 
 function normalizeTitle(title: string): string {
   return title.trim().toLowerCase();
+}
+
+function normalizeMediaType(value: unknown): MediaType {
+  return value === "tv" ? "tv" : "movie";
+}
+
+/**
+ * Backfills mediaType on documents read via .lean(), which skips Mongoose's
+ * schema-default application — records created before this field existed
+ * would otherwise come back with mediaType undefined instead of "movie".
+ */
+export function withDefaultMediaType<T extends { mediaType?: MediaType }>(doc: T): T & { mediaType: MediaType } {
+  return { ...doc, mediaType: doc.mediaType ?? "movie" };
 }
 
 async function assertCollectionExists(collectionId: string | null): Promise<void> {
@@ -30,10 +43,11 @@ async function attachPoster(
   movieId: Types.ObjectId,
   title: string,
   knownYear?: number,
-  knownRuntime?: number
+  knownRuntime?: number,
+  mediaType: MediaType = "movie"
 ): Promise<void> {
   try {
-    const result = await findPoster(title, knownYear);
+    const result = await findPoster(title, knownYear, mediaType);
     await Movie.findByIdAndUpdate(movieId, {
       posterUrl: result.posterUrl,
       posterSource: result.posterSource,
@@ -59,7 +73,7 @@ export async function retryStalePosterLookups(): Promise<void> {
   if (!isPosterProviderConfigured()) return;
 
   const stale = await Movie.find({ posterStatus: "skipped" })
-    .select("_id title year runtime")
+    .select("_id title year runtime mediaType")
     .limit(STALE_POSTER_BACKFILL_LIMIT)
     .lean();
 
@@ -73,12 +87,13 @@ export async function retryStalePosterLookups(): Promise<void> {
   );
 
   await mapWithConcurrency(stale, POSTER_FETCH_CONCURRENCY, (movie) =>
-    attachPoster(movie._id, movie.title, movie.year, movie.runtime)
+    attachPoster(movie._id, movie.title, movie.year, movie.runtime, normalizeMediaType(movie.mediaType))
   );
 }
 
 export interface CreateMovieInput {
   title: string;
+  mediaType?: string;
   collectionId?: string | null;
   year?: number;
   runtime?: number;
@@ -89,6 +104,7 @@ export async function createMovie(input: CreateMovieInput): Promise<IMovie> {
   const title = input.title?.trim();
   if (!title) throw new AppError("Movie title is required", 400);
 
+  const mediaType = normalizeMediaType(input.mediaType);
   const collectionId = input.collectionId || null;
   await assertCollectionExists(collectionId);
 
@@ -108,6 +124,7 @@ export async function createMovie(input: CreateMovieInput): Promise<IMovie> {
 
   const movie = await Movie.create({
     title,
+    mediaType,
     collectionId,
     order: count,
     year: input.year,
@@ -116,7 +133,7 @@ export async function createMovie(input: CreateMovieInput): Promise<IMovie> {
     posterStatus: input.posterUrl ? "found" : shouldFetchPoster ? "pending" : "skipped",
   });
 
-  if (shouldFetchPoster) void attachPoster(movie._id, title, input.year, input.runtime);
+  if (shouldFetchPoster) void attachPoster(movie._id, title, input.year, input.runtime, mediaType);
 
   return movie;
 }
@@ -126,8 +143,13 @@ export interface BulkAddResult {
   skipped: string[];
 }
 
-export async function bulkAddMovies(collectionId: string | null, rawText: string): Promise<BulkAddResult> {
+export async function bulkAddMovies(
+  collectionId: string | null,
+  rawText: string,
+  mediaTypeInput?: string
+): Promise<BulkAddResult> {
   await assertCollectionExists(collectionId);
+  const mediaType = normalizeMediaType(mediaTypeInput);
 
   const titles = parseBulkTitles(rawText ?? "");
   if (titles.length === 0) {
@@ -156,6 +178,7 @@ export async function bulkAddMovies(collectionId: string | null, rawText: string
   let count = await Movie.countDocuments({ collectionId });
   const docs = toCreate.map((title) => ({
     title,
+    mediaType,
     collectionId: collectionId ? new Types.ObjectId(collectionId) : null,
     order: count++,
     posterStatus,
@@ -165,7 +188,7 @@ export async function bulkAddMovies(collectionId: string | null, rawText: string
 
   if (shouldFetchPosters && created.length > 0) {
     void mapWithConcurrency(created, POSTER_FETCH_CONCURRENCY, (movie) =>
-      attachPoster(movie._id, movie.title)
+      attachPoster(movie._id, movie.title, undefined, undefined, mediaType)
     );
   }
 
@@ -174,6 +197,7 @@ export async function bulkAddMovies(collectionId: string | null, rawText: string
 
 export interface UpdateMovieInput {
   title?: string;
+  mediaType?: string;
   collectionId?: string | null;
   watched?: boolean;
   year?: number | null;
@@ -191,6 +215,8 @@ export async function updateMovie(id: string, input: UpdateMovieInput): Promise<
     if (!title) throw new AppError("Movie title cannot be empty", 400);
     movie.title = title;
   }
+
+  if (input.mediaType !== undefined) movie.mediaType = normalizeMediaType(input.mediaType);
 
   if (input.collectionId !== undefined) {
     const nextCollectionId = input.collectionId || null;

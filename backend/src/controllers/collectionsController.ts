@@ -8,6 +8,7 @@ import {
   getCollectionOrThrow,
   updateCollection,
 } from "../services/collectionService";
+import { withDefaultMediaType } from "../services/movieService";
 import { asyncHandler } from "../utils/asyncHandler";
 
 export const listCollections = asyncHandler(async (_req: Request, res: Response) => {
@@ -33,7 +34,7 @@ export const getCollectionDetail = asyncHandler(async (req: Request, res: Respon
     collection: { ...collection, stats: statsById.get(id) },
     breadcrumb: pathMap.get(id) ?? [collection.name],
     childCollections,
-    movies,
+    movies: movies.map(withDefaultMediaType),
   });
 });
 

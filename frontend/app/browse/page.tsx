@@ -5,6 +5,7 @@ import { MovieCard } from "@/components/movie/MovieCard";
 import { MovieListItem } from "@/components/movie/MovieListItem";
 import { MOVIE_GRID_CLASSES } from "@/components/movie/SortableMovieList";
 import { ViewToggle } from "@/components/movie/ViewToggle";
+import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/ToastProvider";
@@ -14,7 +15,7 @@ import { useMovieView } from "@/hooks/useMovieView";
 import { ApiError, updateMovie } from "@/lib/api";
 import { getBreadcrumbTrail, getRootAncestor } from "@/lib/collectionTree";
 import type { Movie } from "@/types";
-import { CheckCheck, Clapperboard, ListChecks } from "lucide-react";
+import { CheckCheck, Clapperboard, ListChecks, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo } from "react";
@@ -28,13 +29,19 @@ function BrowseContent() {
   const filter: Filter = filterParam === "remaining" || filterParam === "watched" ? filterParam : "all";
 
   const watchedParam = filter === "watched" ? true : filter === "remaining" ? false : undefined;
-  const { movies, isLoading: moviesLoading, mutate: mutateMovies } = useMovies({ watched: watchedParam });
+  const {
+    movies,
+    isLoading: moviesLoading,
+    error: moviesError,
+    mutate: mutateMovies,
+  } = useMovies({ watched: watchedParam });
   const { movies: allMovies } = useMovies();
-  const { collections, isLoading: collectionsLoading } = useCollections();
+  const { collections, isLoading: collectionsLoading, error: collectionsError, mutate: mutateCollections } = useCollections();
   const { showError } = useToast();
   const [view, setView] = useMovieView();
 
   const isLoading = moviesLoading || collectionsLoading;
+  const loadError = moviesError || collectionsError;
   const libraryIsEmpty = allMovies.length === 0;
 
   const NO_COLLECTION_KEY = "none";
@@ -96,6 +103,23 @@ function BrowseContent() {
             <Skeleton key={i} className="h-14 rounded-2xl" />
           ))}
         </div>
+      ) : loadError ? (
+        <EmptyState
+          icon={WifiOff}
+          title="Couldn't connect to the library."
+          description="The server might be waking up or unreachable. Try again in a moment."
+          action={
+            <Button
+              variant="glass"
+              onClick={() => {
+                mutateMovies();
+                mutateCollections();
+              }}
+            >
+              Try again
+            </Button>
+          }
+        />
       ) : groups.length === 0 ? (
         libraryIsEmpty ? (
           <EmptyState

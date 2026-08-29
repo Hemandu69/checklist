@@ -1,6 +1,7 @@
 "use client";
 
 import { CollectionSelect } from "@/components/collection/CollectionSelect";
+import { MediaTypeToggle } from "@/components/movie/MediaTypeToggle";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
@@ -8,7 +9,7 @@ import { useToast } from "@/components/ui/ToastProvider";
 import { bulkAddMovies, createMovie } from "@/lib/api";
 import { ApiError } from "@/lib/api";
 import { parseBulkTitles } from "@/lib/utils";
-import type { Collection } from "@/types";
+import type { Collection, MediaType } from "@/types";
 import { useState } from "react";
 
 type Tab = "single" | "bulk";
@@ -28,6 +29,7 @@ export function AddMovieModal({
 }) {
   const { showError, showSuccess } = useToast();
   const [tab, setTab] = useState<Tab>("single");
+  const [mediaType, setMediaType] = useState<MediaType>("movie");
   const [collectionId, setCollectionId] = useState(defaultCollectionId ?? "");
   const [title, setTitle] = useState("");
   const [bulkText, setBulkText] = useState("");
@@ -35,11 +37,13 @@ export function AddMovieModal({
 
   const effectiveCollectionId = (defaultCollectionId ?? collectionId) || null;
   const bulkCount = parseBulkTitles(bulkText).length;
+  const noun = mediaType === "tv" ? "Show" : "Movie";
 
   function reset() {
     setTitle("");
     setBulkText("");
     setTab("single");
+    setMediaType("movie");
   }
 
   function handleClose() {
@@ -54,21 +58,21 @@ export function AddMovieModal({
     try {
       if (tab === "single") {
         if (!title.trim()) return;
-        await createMovie({ title: title.trim(), collectionId: effectiveCollectionId });
+        await createMovie({ title: title.trim(), mediaType, collectionId: effectiveCollectionId });
         showSuccess(`Added "${title.trim()}"`);
       } else {
         if (bulkCount === 0) {
-          showError("Paste at least one movie title.");
+          showError(`Paste at least one ${noun.toLowerCase()} title.`);
           return;
         }
-        const result = await bulkAddMovies(effectiveCollectionId, bulkText);
+        const result = await bulkAddMovies(effectiveCollectionId, bulkText, mediaType);
         const skippedNote = result.skipped.length > 0 ? `, skipped ${result.skipped.length} duplicate${result.skipped.length === 1 ? "" : "s"}` : "";
-        showSuccess(`Added ${result.created.length} movie${result.created.length === 1 ? "" : "s"}${skippedNote}`);
+        showSuccess(`Added ${result.created.length} ${noun.toLowerCase()}${result.created.length === 1 ? "" : "s"}${skippedNote}`);
       }
       onAdded();
       handleClose();
     } catch (err) {
-      showError(err instanceof ApiError ? err.message : "Couldn't add the movie right now.");
+      showError(err instanceof ApiError ? err.message : `Couldn't add the ${noun.toLowerCase()} right now.`);
     } finally {
       setBusy(false);
     }
@@ -77,8 +81,15 @@ export function AddMovieModal({
   const canSubmit = tab === "single" ? title.trim().length > 0 : bulkCount > 0;
 
   return (
-    <Modal open={open} onClose={handleClose} title="Add Movies" maxWidth="max-w-lg">
+    <Modal open={open} onClose={handleClose} title={mediaType === "tv" ? "Add TV Shows" : "Add Movies"} maxWidth="max-w-lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-[color:var(--text-secondary)]">
+            Type
+          </label>
+          <MediaTypeToggle value={mediaType} onChange={setMediaType} />
+        </div>
+
         {!defaultCollectionId && (
           <div>
             <label className="mb-1.5 block text-xs font-medium text-[color:var(--text-secondary)]">
@@ -103,7 +114,7 @@ export function AddMovieModal({
                 : "text-[color:var(--text-secondary)]"
             }`}
           >
-            Single movie
+            Single {noun.toLowerCase()}
           </button>
           <button
             type="button"
@@ -121,7 +132,7 @@ export function AddMovieModal({
         {tab === "single" ? (
           <Input
             autoFocus
-            placeholder="Movie title…"
+            placeholder={`${noun} title…`}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
@@ -130,7 +141,11 @@ export function AddMovieModal({
             <Textarea
               autoFocus
               rows={8}
-              placeholder={"Paste movie names…\nIron Man\nThe Incredible Hulk\nIron Man 2\nThor"}
+              placeholder={
+                mediaType === "tv"
+                  ? "Paste TV show names…\nBreaking Bad\nDark\nThe Boys\nStranger Things"
+                  : "Paste movie names…\nIron Man\nThe Incredible Hulk\nIron Man 2\nThor"
+              }
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
             />
@@ -148,8 +163,8 @@ export function AddMovieModal({
             {busy
               ? "Adding…"
               : tab === "bulk"
-                ? `Add ${bulkCount || ""} Movie${bulkCount === 1 ? "" : "s"}`
-                : "Add Movie"}
+                ? `Add ${bulkCount || ""} ${noun}${bulkCount === 1 ? "" : "s"}`
+                : `Add ${noun}`}
           </Button>
         </div>
       </form>

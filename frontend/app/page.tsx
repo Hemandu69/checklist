@@ -19,18 +19,22 @@ import { useMovieView } from "@/hooks/useMovieView";
 import { getChildren } from "@/lib/collectionTree";
 import { ApiError, deleteCollection, deleteMovie, reorderMovies, updateMovie } from "@/lib/api";
 import type { Collection, Movie } from "@/types";
-import { FolderPlus, LibraryBig } from "lucide-react";
+import { FolderPlus, LibraryBig, WifiOff } from "lucide-react";
 import { useState } from "react";
 
 export default function HomePage() {
-  const { collections, isLoading: collectionsLoading, mutate } = useCollections();
-  const { movies: looseMovies, isLoading: looseLoading, mutate: mutateLoose } = useMovies({
-    collectionId: null,
-  });
+  const { collections, isLoading: collectionsLoading, error: collectionsError, mutate } = useCollections();
+  const {
+    movies: looseMovies,
+    isLoading: looseLoading,
+    error: looseError,
+    mutate: mutateLoose,
+  } = useMovies({ collectionId: null });
   const { showError, showSuccess } = useToast();
   const [view, setView] = useMovieView();
 
   const isLoading = collectionsLoading || looseLoading;
+  const loadError = collectionsError || looseError;
 
   const [addOpen, setAddOpen] = useState(false);
   const [collectionModalOpen, setCollectionModalOpen] = useState(false);
@@ -113,6 +117,23 @@ export default function HomePage() {
             <Skeleton key={i} className="h-44 rounded-3xl" />
           ))}
         </div>
+      ) : loadError ? (
+        <EmptyState
+          icon={WifiOff}
+          title="Couldn't connect to the library."
+          description="The server might be waking up or unreachable. Try again in a moment."
+          action={
+            <Button
+              variant="glass"
+              onClick={() => {
+                mutate();
+                mutateLoose();
+              }}
+            >
+              Try again
+            </Button>
+          }
+        />
       ) : nothingAtAll ? (
         <EmptyState
           icon={LibraryBig}

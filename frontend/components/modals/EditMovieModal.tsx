@@ -1,12 +1,13 @@
 "use client";
 
 import { CollectionSelect } from "@/components/collection/CollectionSelect";
+import { MediaTypeToggle } from "@/components/movie/MediaTypeToggle";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/ToastProvider";
 import { ApiError, updateMovie } from "@/lib/api";
-import type { Collection, Movie } from "@/types";
+import type { Collection, MediaType, Movie } from "@/types";
 import { useEffect, useState } from "react";
 
 export function EditMovieModal({
@@ -24,6 +25,7 @@ export function EditMovieModal({
 }) {
   const { showError, showSuccess } = useToast();
   const [title, setTitle] = useState("");
+  const [mediaType, setMediaType] = useState<MediaType>("movie");
   const [collectionId, setCollectionId] = useState("");
   const [year, setYear] = useState("");
   const [runtime, setRuntime] = useState("");
@@ -33,6 +35,7 @@ export function EditMovieModal({
   useEffect(() => {
     if (open && movie) {
       setTitle(movie.title);
+      setMediaType(movie.mediaType ?? "movie");
       setCollectionId(movie.collectionId ?? "");
       setYear(movie.year ? String(movie.year) : "");
       setRuntime(movie.runtime ? String(movie.runtime) : "");
@@ -48,12 +51,13 @@ export function EditMovieModal({
     try {
       await updateMovie(movie._id, {
         title: title.trim(),
+        mediaType,
         collectionId: collectionId || null,
         year: year ? Number(year) : null,
         runtime: runtime ? Number(runtime) : null,
         posterUrl: posterUrl.trim() ? posterUrl.trim() : null,
       });
-      showSuccess("Movie updated");
+      showSuccess(mediaType === "tv" ? "TV show updated" : "Movie updated");
       onSaved();
       onClose();
     } catch (err) {
@@ -66,8 +70,15 @@ export function EditMovieModal({
   if (!movie) return null;
 
   return (
-    <Modal open={open} onClose={onClose} title="Edit Movie">
+    <Modal open={open} onClose={onClose} title={mediaType === "tv" ? "Edit TV Show" : "Edit Movie"}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-[color:var(--text-secondary)]">
+            Type
+          </label>
+          <MediaTypeToggle value={mediaType} onChange={setMediaType} />
+        </div>
+
         <div>
           <label className="mb-1.5 block text-xs font-medium text-[color:var(--text-secondary)]">
             Title

@@ -1,5 +1,6 @@
 "use client";
 
+import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { cn, formatRuntime } from "@/lib/utils";
 import type { Movie } from "@/types";
 import { Check, GripVertical, Pencil, Trash2 } from "lucide-react";
@@ -27,7 +28,7 @@ export function MovieListItem({
   return (
     <div
       className={cn(
-        "group flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors duration-200 sm:gap-3.5 sm:px-4",
+        "group flex items-center gap-2.5 rounded-2xl px-2.5 py-2.5 transition-colors duration-200 sm:gap-3.5 sm:px-4",
         "hover:bg-[color:var(--surface-glass)]",
         isDragging && "glass-strong shadow-xl"
       )}
@@ -61,11 +62,11 @@ export function MovieListItem({
         </span>
       </button>
 
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 py-0.5">
         <p
           data-watched={watched}
           className={cn(
-            "strike-text truncate text-[15px] leading-snug",
+            "strike-text break-words text-[15px] leading-snug sm:truncate",
             watched ? "text-[color:var(--text-tertiary)]" : "text-[color:var(--text-primary)]"
           )}
         >
@@ -83,26 +84,39 @@ export function MovieListItem({
       </div>
 
       {(onEdit || onDelete) && (
-        <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity duration-200 sm:opacity-40 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-          {onEdit && (
-            <button
-              onClick={onEdit}
-              aria-label="Edit movie"
-              className="rounded-lg p-1.5 text-[color:var(--text-secondary)] transition hover:bg-[color:var(--surface-glass-strong)] hover:text-[color:var(--text-primary)]"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {onDelete && (
-            <button
-              onClick={onDelete}
-              aria-label="Delete movie"
-              className="rounded-lg p-1.5 text-[color:var(--text-secondary)] transition hover:bg-[color:var(--danger-soft)] hover:text-[color:var(--danger)]"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+        <>
+          {/* Narrow screens: a single overflow menu keeps the row from getting
+              crowded once the title wraps to multiple lines. */}
+          <div className="shrink-0 sm:hidden">
+            <DropdownMenu
+              items={[
+                ...(onEdit ? [{ label: "Edit", onSelect: onEdit }] : []),
+                ...(onDelete ? [{ label: "Delete", onSelect: onDelete, danger: true }] : []),
+              ]}
+            />
+          </div>
+
+          <div className="hidden shrink-0 items-center gap-1 opacity-40 transition-opacity duration-200 sm:flex sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+            {onEdit && (
+              <button
+                onClick={onEdit}
+                aria-label="Edit movie"
+                className="rounded-lg p-1.5 text-[color:var(--text-secondary)] transition hover:bg-[color:var(--surface-glass-strong)] hover:text-[color:var(--text-primary)]"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={onDelete}
+                aria-label="Delete movie"
+                className="rounded-lg p-1.5 text-[color:var(--text-secondary)] transition hover:bg-[color:var(--danger-soft)] hover:text-[color:var(--danger)]"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

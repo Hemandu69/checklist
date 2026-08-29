@@ -7,6 +7,7 @@ import {
   deleteMovie,
   reorderMovies,
   updateMovie,
+  withDefaultMediaType,
 } from "../services/movieService";
 import { asyncHandler } from "../utils/asyncHandler";
 
@@ -25,20 +26,20 @@ export const listMovies = asyncHandler(async (req: Request, res: Response) => {
   if (collectionId !== undefined) filter.collectionId = collectionId;
 
   const movies = await Movie.find(filter).sort({ order: 1, createdAt: 1 }).lean();
-  res.json(movies);
+  res.json(movies.map(withDefaultMediaType));
 });
 
 export const createMovieHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { title, year, runtime, posterUrl } = req.body;
+  const { title, mediaType, year, runtime, posterUrl } = req.body;
   const collectionId = parseCollectionIdParam(req.body.collectionId) ?? null;
-  const movie = await createMovie({ title, collectionId, year, runtime, posterUrl });
+  const movie = await createMovie({ title, mediaType, collectionId, year, runtime, posterUrl });
   res.status(201).json(movie);
 });
 
 export const bulkAddMoviesHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { text } = req.body;
+  const { text, mediaType } = req.body;
   const collectionId = parseCollectionIdParam(req.body.collectionId) ?? null;
-  const result = await bulkAddMovies(collectionId, text);
+  const result = await bulkAddMovies(collectionId, text, mediaType);
   res.status(201).json(result);
 });
 

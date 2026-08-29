@@ -1,4 +1,4 @@
-import type { Collection, CollectionDetail, Movie, SearchResult } from "@/types";
+import type { Collection, CollectionDetail, MediaType, Movie, SearchResult } from "@/types";
 
 // The localhost fallback only ever applies to local development — Render builds
 // always have NEXT_PUBLIC_API_URL set, and this warns loudly if that's missed.
@@ -81,20 +81,22 @@ export const getMovies = (params?: { watched?: boolean; collectionId?: string | 
 };
 export const createMovie = (input: {
   title: string;
+  mediaType?: MediaType;
   collectionId?: string | null;
   year?: number;
   runtime?: number;
   posterUrl?: string;
 }) => request<Movie>("/movies", { method: "POST", body: JSON.stringify(input) });
-export const bulkAddMovies = (collectionId: string | null, text: string) =>
+export const bulkAddMovies = (collectionId: string | null, text: string, mediaType?: MediaType) =>
   request<{ created: Movie[]; skipped: string[] }>("/movies/bulk", {
     method: "POST",
-    body: JSON.stringify({ collectionId, text }),
+    body: JSON.stringify({ collectionId, text, mediaType }),
   });
 export const updateMovie = (
   id: string,
   input: Partial<{
     title: string;
+    mediaType: MediaType;
     collectionId: string | null;
     watched: boolean;
     year: number | null;
